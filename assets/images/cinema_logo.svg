@@ -1,0 +1,37 @@
+<svg width="200" height="300" viewBox="0 0 200 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Cinema Clapperboard -->
+  <g transform="translate(20, 40)">
+    <!-- Main board -->
+    <path d="M20 120 L140 120 L160 220 L0 220 Z" fill="#6B46C1"/>
+    
+    <!-- Top clapper strips -->
+    <path d="M30 60 L150 40 L160 80 L40 100 Z" fill="#8B5CF6"/>
+    <path d="M25 80 L145 60 L155 100 L35 120 Z" fill="#A78BFA"/>
+    <path d="M20 100 L140 80 L150 120 L30 140 Z" fill="#6B46C1"/>
+    
+    <!-- White strips on clapper -->
+    <rect x="40" y="65" width="15" height="25" fill="white" transform="rotate(-5 47.5 77.5)"/>
+    <rect x="70" y="60" width="15" height="25" fill="white" transform="rotate(-5 77.5 72.5)"/>
+    <rect x="100" y="55" width="15" height="25" fill="white" transform="rotate(-5 107.5 67.5)"/>
+    
+    <rect x="45" y="85" width="15" height="25" fill="white" transform="rotate(-5 52.5 97.5)"/>
+    <rect x="75" y="80" width="15" height="25" fill="white" transform="rotate(-5 82.5 92.5)"/>
+    <rect x="105" y="75" width="15" height="25" fill="white" transform="rotate(-5 112.5 87.5)"/>
+    
+    <rect x="50" y="105" width="15" height="25" fill="white" transform="rotate(-5 57.5 117.5)"/>
+    <rect x="80" y="100" width="15" height="25" fill="white" transform="rotate(-5 87.5 112.5)"/>
+    <rect x="110" y="95" width="15" height="25" fill="white" transform="rotate(-5 117.5 107.5)"/>
+    
+    <!-- Eyes -->
+    <ellipse cx="50" cy="170" rx="20" ry="15" fill="white"/>
+    <ellipse cx="110" cy="170" rx="20" ry="15" fill="white"/>
+    
+    <!-- Eye pupils -->
+    <circle cx="58" cy="170" r="5" fill="black"/>
+    <circle cx="102" cy="170" r="5" fill="black"/>
+  </g>
+  
+  <!-- Text -->
+  <text x="100" y="260" text-anchor="middle" fill="black" font-family="Arial, sans-serif" font-weight="bold" font-size="24">CINEMA</text>
+  <text x="100" y="285" text-anchor="middle" fill="black" font-family="Arial, sans-serif" font-weight="normal" font-size="16">FST-HUB</text>
+</svg>

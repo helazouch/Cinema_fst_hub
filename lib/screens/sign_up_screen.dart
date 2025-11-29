@@ -14,7 +14,12 @@ class SignUpScreen extends StatefulWidget {
 }
 
 class _SignUpScreenState extends State<SignUpScreen> {
+  final TextEditingController _firstNameController = TextEditingController();
+  final TextEditingController _lastNameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _monthController = TextEditingController();
+  final TextEditingController _dayController = TextEditingController();
+  final TextEditingController _yearController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
       TextEditingController();
@@ -29,7 +34,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   @override
   void dispose() {
+    _firstNameController.dispose();
+    _lastNameController.dispose();
     _emailController.dispose();
+    _monthController.dispose();
+    _dayController.dispose();
+    _yearController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
@@ -179,7 +189,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Colors.black,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -193,7 +203,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.bold,
-                  color: Colors.black,
+                  color: Colors.white,
                 ),
               ),
               const Text(
@@ -201,18 +211,77 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.bold,
-                  color: Colors.black,
+                  color: Colors.white,
                 ),
               ),
 
               const SizedBox(height: 40),
 
-              // Email field
+              // First Name field
               CustomTextField(
-                hintText: 'Username or Email',
+                hintText: 'First Name',
                 prefixIcon: Icons.person_outline,
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
+                controller: _firstNameController,
+                keyboardType: TextInputType.name,
+              ),
+
+              const SizedBox(height: 16),
+
+              // Last Name field
+              CustomTextField(
+                hintText: 'Last Name',
+                prefixIcon: Icons.person_outline,
+                controller: _lastNameController,
+                keyboardType: TextInputType.name,
+              ),
+
+              const SizedBox(height: 16),
+
+              // Date of birth label
+              const Text(
+                'Date of birth',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              // Date of birth fields (MM/DD/YYYY)
+              Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: CustomTextField(
+                      hintText: 'MM',
+                      prefixIcon: Icons.calendar_today,
+                      controller: _monthController,
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: CustomTextField(
+                      hintText: 'DD',
+                      prefixIcon: Icons.calendar_today,
+                      controller: _dayController,
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 3,
+                    child: CustomTextField(
+                      hintText: 'YYYY',
+                      prefixIcon: Icons.calendar_today,
+                      controller: _yearController,
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                ],
               ),
 
               const SizedBox(height: 16),
@@ -281,6 +350,62 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 ],
               ),
 
+              const SizedBox(height: 16),
+
+              // Upload Image section
+              const Text(
+                'Upload image',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              // Upload Image button
+              InkWell(
+                onTap: () {
+                  // TODO: Implement image picker
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Upload image functionality')),
+                  );
+                },
+                child: Container(
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E1E1E),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey[800]!),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.photo_camera,
+                        color: Colors.grey[400],
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Photo',
+                        style: TextStyle(color: Colors.grey[400], fontSize: 16),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              // Privacy notice
+              Text(
+                'By clicking the Register button, you agree\nto the public offer',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              ),
+
               const SizedBox(height: 24),
 
               // Create Account button
@@ -295,15 +420,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
               // OR divider
               Row(
                 children: [
-                  Expanded(child: Divider(color: Colors.grey[300])),
+                  Expanded(child: Divider(color: Colors.grey[700])),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
                       '- OR Continue with -',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                      style: TextStyle(color: Colors.grey[400], fontSize: 14),
                     ),
                   ),
-                  Expanded(child: Divider(color: Colors.grey[300])),
+                  Expanded(child: Divider(color: Colors.grey[700])),
                 ],
               ),
 
@@ -336,7 +461,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 children: [
                   Text(
                     'I Already Have an Account ',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                    style: TextStyle(color: Colors.grey[400], fontSize: 14),
                   ),
                   TextButton(
                     onPressed: _handleLogin,

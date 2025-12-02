@@ -34,6 +34,77 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _error;
   UserModel? _currentUser;
 
+  // Widget helper for displaying movie images with loading and error states
+  Widget _buildMovieImage(String imageUrl, {double iconSize = 40}) {
+    if (imageUrl.isEmpty) {
+      return Container(
+        color: const Color(0xFF1E1E1E),
+        child: Center(
+          child: Icon(
+            Icons.movie,
+            color: const Color(0xFF6B46C1),
+            size: iconSize,
+          ),
+        ),
+      );
+    }
+
+    // Use CORS proxy for Amazon images to avoid CORS errors
+    String proxyUrl = imageUrl;
+    if (imageUrl.contains('m.media-amazon.com') ||
+        imageUrl.contains('amazon')) {
+      // Use a CORS proxy service
+      proxyUrl = 'https://corsproxy.io/?${Uri.encodeComponent(imageUrl)}';
+    }
+
+    return Image.network(
+      proxyUrl,
+      fit: BoxFit.cover,
+      width: double.infinity,
+      height: double.infinity,
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) return child;
+        return Container(
+          color: const Color(0xFF1E1E1E),
+          child: Center(
+            child: CircularProgressIndicator(
+              value: loadingProgress.expectedTotalBytes != null
+                  ? loadingProgress.cumulativeBytesLoaded /
+                        loadingProgress.expectedTotalBytes!
+                  : null,
+              color: const Color(0xFF6B46C1),
+              strokeWidth: 2,
+            ),
+          ),
+        );
+      },
+      errorBuilder: (context, error, stackTrace) {
+        // Silently handle CORS errors - show placeholder instead
+        return Container(
+          color: const Color(0xFF1E1E1E),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.movie_outlined,
+                  color: const Color(0xFF6B46C1),
+                  size: iconSize,
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Image',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey, fontSize: 10),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -290,6 +361,36 @@ class _HomeScreenState extends State<HomeScreen> {
                                       child: Image.network(
                                         _trendingMovie!.imageUrl,
                                         fit: BoxFit.cover,
+                                        loadingBuilder: (context, child, loadingProgress) {
+                                          if (loadingProgress == null)
+                                            return child;
+                                          return Container(
+                                            decoration: const BoxDecoration(
+                                              gradient: LinearGradient(
+                                                begin: Alignment.topLeft,
+                                                end: Alignment.bottomRight,
+                                                colors: [
+                                                  Color(0xFF7B2CBF),
+                                                  Color(0xFFE0AAFF),
+                                                ],
+                                              ),
+                                            ),
+                                            child: Center(
+                                              child: CircularProgressIndicator(
+                                                value:
+                                                    loadingProgress
+                                                            .expectedTotalBytes !=
+                                                        null
+                                                    ? loadingProgress
+                                                              .cumulativeBytesLoaded /
+                                                          loadingProgress
+                                                              .expectedTotalBytes!
+                                                    : null,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          );
+                                        },
                                         errorBuilder:
                                             (context, error, stackTrace) {
                                               return Container(
@@ -543,7 +644,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                             Expanded(
                                               child: Container(
                                                 decoration: BoxDecoration(
-                                                  color: Colors.grey[900],
+                                                  color: const Color(
+                                                    0xFF1E1E1E,
+                                                  ),
                                                   borderRadius:
                                                       BorderRadius.circular(12),
                                                 ),
@@ -554,50 +657,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                                           BorderRadius.circular(
                                                             12,
                                                           ),
-                                                      child:
-                                                          movie
-                                                              .imageUrl
-                                                              .isNotEmpty
-                                                          ? Image.network(
-                                                              movie.imageUrl,
-                                                              fit: BoxFit.cover,
-                                                              width: double
-                                                                  .infinity,
-                                                              errorBuilder:
-                                                                  (
-                                                                    context,
-                                                                    error,
-                                                                    stackTrace,
-                                                                  ) {
-                                                                    return Container(
-                                                                      color: Colors
-                                                                          .grey[850],
-                                                                      child: Center(
-                                                                        child: Icon(
-                                                                          Icons
-                                                                              .movie,
-                                                                          color:
-                                                                              Colors.grey[700],
-                                                                          size:
-                                                                              40,
-                                                                        ),
-                                                                      ),
-                                                                    );
-                                                                  },
-                                                            )
-                                                          : Container(
-                                                              color: Colors
-                                                                  .grey[850],
-                                                              child: Center(
-                                                                child: Icon(
-                                                                  Icons.movie,
-                                                                  color: Colors
-                                                                      .grey[700],
-                                                                  size: 40,
-                                                                ),
-                                                              ),
-                                                            ),
+                                                      child: _buildMovieImage(
+                                                        movie.imageUrl,
+                                                      ),
                                                     ),
+                                                    // Rating Badge
                                                     Positioned(
                                                       top: 8,
                                                       right: 8,
@@ -748,26 +812,27 @@ class _HomeScreenState extends State<HomeScreen> {
                                       children: [
                                         // Movie Poster
                                         Expanded(
-                                          child: Container(
-                                            decoration: BoxDecoration(
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: Colors.black
-                                                      .withOpacity(0.3),
-                                                  blurRadius: 8,
-                                                  offset: const Offset(0, 4),
-                                                ),
-                                              ],
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(
+                                              12,
                                             ),
-                                            child: Stack(
-                                              children: [
-                                                ClipRRect(
-                                                  borderRadius:
-                                                      BorderRadius.circular(12),
-                                                  child:
-                                                      movie.imageUrl.isNotEmpty
+                                            child: Container(
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFF1E1E1E),
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: Colors.black
+                                                        .withOpacity(0.3),
+                                                    blurRadius: 8,
+                                                    offset: const Offset(0, 4),
+                                                  ),
+                                                ],
+                                              ),
+                                              child: Stack(
+                                                children: [
+                                                  movie.imageUrl.isNotEmpty
                                                       ? Image.network(
                                                           movie.imageUrl,
                                                           width:
@@ -775,6 +840,29 @@ class _HomeScreenState extends State<HomeScreen> {
                                                           height:
                                                               double.infinity,
                                                           fit: BoxFit.cover,
+                                                          loadingBuilder:
+                                                              (
+                                                                context,
+                                                                child,
+                                                                loadingProgress,
+                                                              ) {
+                                                                if (loadingProgress ==
+                                                                    null)
+                                                                  return child;
+                                                                return Center(
+                                                                  child: CircularProgressIndicator(
+                                                                    color: const Color(
+                                                                      0xFF6B46C1,
+                                                                    ),
+                                                                    value:
+                                                                        loadingProgress.expectedTotalBytes !=
+                                                                            null
+                                                                        ? loadingProgress.cumulativeBytesLoaded /
+                                                                              loadingProgress.expectedTotalBytes!
+                                                                        : null,
+                                                                  ),
+                                                                );
+                                                              },
                                                           errorBuilder:
                                                               (
                                                                 context,
@@ -785,12 +873,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                                                   color: const Color(
                                                                     0xFF1E1E1E,
                                                                   ),
-                                                                  child: const Icon(
-                                                                    Icons.movie,
-                                                                    color: Color(
-                                                                      0xFF6B46C1,
+                                                                  child: const Center(
+                                                                    child: Icon(
+                                                                      Icons
+                                                                          .movie,
+                                                                      color: Color(
+                                                                        0xFF6B46C1,
+                                                                      ),
+                                                                      size: 50,
                                                                     ),
-                                                                    size: 50,
                                                                   ),
                                                                 );
                                                               },
@@ -799,64 +890,66 @@ class _HomeScreenState extends State<HomeScreen> {
                                                           color: const Color(
                                                             0xFF1E1E1E,
                                                           ),
-                                                          child: const Icon(
-                                                            Icons.movie,
-                                                            color: Color(
-                                                              0xFF6B46C1,
+                                                          child: const Center(
+                                                            child: Icon(
+                                                              Icons.movie,
+                                                              color: Color(
+                                                                0xFF6B46C1,
+                                                              ),
+                                                              size: 50,
                                                             ),
-                                                            size: 50,
                                                           ),
                                                         ),
-                                                ),
-                                                Positioned(
-                                                  top: 8,
-                                                  right: 8,
-                                                  child: Container(
-                                                    padding:
-                                                        const EdgeInsets.symmetric(
-                                                          horizontal: 8,
-                                                          vertical: 4,
-                                                        ),
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.black
-                                                          .withOpacity(0.7),
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            8,
+                                                  Positioned(
+                                                    top: 8,
+                                                    right: 8,
+                                                    child: Container(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 8,
+                                                            vertical: 4,
                                                           ),
-                                                    ),
-                                                    child: Row(
-                                                      mainAxisSize:
-                                                          MainAxisSize.min,
-                                                      children: [
-                                                        const Icon(
-                                                          Icons.star,
-                                                          color: Colors.amber,
-                                                          size: 12,
-                                                        ),
-                                                        const SizedBox(
-                                                          width: 4,
-                                                        ),
-                                                        Text(
-                                                          movie.rating
-                                                              .toStringAsFixed(
-                                                                1,
-                                                              ),
-                                                          style:
-                                                              const TextStyle(
-                                                                color: Colors
-                                                                    .white,
-                                                                fontSize: 10,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .w600,
-                                                              ),
-                                                        ),
-                                                      ],
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.black
+                                                            .withOpacity(0.7),
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              8,
+                                                            ),
+                                                      ),
+                                                      child: Row(
+                                                        mainAxisSize:
+                                                            MainAxisSize.min,
+                                                        children: [
+                                                          const Icon(
+                                                            Icons.star,
+                                                            color: Colors.amber,
+                                                            size: 12,
+                                                          ),
+                                                          const SizedBox(
+                                                            width: 4,
+                                                          ),
+                                                          Text(
+                                                            movie.rating
+                                                                .toStringAsFixed(
+                                                                  1,
+                                                                ),
+                                                            style:
+                                                                const TextStyle(
+                                                                  color: Colors
+                                                                      .white,
+                                                                  fontSize: 10,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w600,
+                                                                ),
+                                                          ),
+                                                        ],
+                                                      ),
                                                     ),
                                                   ),
-                                                ),
-                                              ],
+                                                ],
+                                              ),
                                             ),
                                           ),
                                         ),
@@ -960,7 +1053,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                             Expanded(
                                               child: Container(
                                                 decoration: BoxDecoration(
-                                                  color: Colors.grey[900],
+                                                  color: const Color(
+                                                    0xFF1E1E1E,
+                                                  ),
                                                   borderRadius:
                                                       BorderRadius.circular(12),
                                                 ),
@@ -971,50 +1066,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                                           BorderRadius.circular(
                                                             12,
                                                           ),
-                                                      child:
-                                                          movie
-                                                              .imageUrl
-                                                              .isNotEmpty
-                                                          ? Image.network(
-                                                              movie.imageUrl,
-                                                              fit: BoxFit.cover,
-                                                              width: double
-                                                                  .infinity,
-                                                              errorBuilder:
-                                                                  (
-                                                                    context,
-                                                                    error,
-                                                                    stackTrace,
-                                                                  ) {
-                                                                    return Container(
-                                                                      color: Colors
-                                                                          .grey[850],
-                                                                      child: Center(
-                                                                        child: Icon(
-                                                                          Icons
-                                                                              .movie,
-                                                                          color:
-                                                                              Colors.grey[700],
-                                                                          size:
-                                                                              40,
-                                                                        ),
-                                                                      ),
-                                                                    );
-                                                                  },
-                                                            )
-                                                          : Container(
-                                                              color: Colors
-                                                                  .grey[850],
-                                                              child: Center(
-                                                                child: Icon(
-                                                                  Icons.movie,
-                                                                  color: Colors
-                                                                      .grey[700],
-                                                                  size: 40,
-                                                                ),
-                                                              ),
-                                                            ),
+                                                      child: _buildMovieImage(
+                                                        movie.imageUrl,
+                                                      ),
                                                     ),
+                                                    // NEW Badge
                                                     Positioned(
                                                       top: 8,
                                                       left: 8,

@@ -50,6 +50,9 @@ dependencies:
   # Image compression and manipulation
   image: ^4.1.7
 
+  # Cloudinary for image hosting and optimization
+  cloudinary_public: ^0.21.0
+
   # HTTP requests for API calls
   http: ^1.2.0
 

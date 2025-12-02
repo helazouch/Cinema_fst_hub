@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_service.dart';
+import '../services/moviedb_api_service.dart';
+import '../models/movie_model.dart';
 import 'admin_dashboard_screen.dart';
 import 'admin_users_screen.dart';
 import 'admin_add_film_screen.dart';
+import 'admin_update_movie_screen.dart';
 import 'sign_in_screen.dart';
 
 class AdminFilmsScreen extends StatefulWidget {
@@ -13,13 +16,89 @@ class AdminFilmsScreen extends StatefulWidget {
   State<AdminFilmsScreen> createState() => _AdminFilmsScreenState();
 }
 
+// Class pour représenter un film avec sa source
+class MovieItem {
+  final String id;
+  final String title;
+  final String imageUrl;
+  final double rating;
+  final String source; // 'api' ou 'firestore'
+  final Movie? movie; // Pour les films Firestore
+
+  MovieItem({
+    required this.id,
+    required this.title,
+    required this.imageUrl,
+    required this.rating,
+    required this.source,
+    this.movie,
+  });
+}
+
 class _AdminFilmsScreenState extends State<AdminFilmsScreen> {
   int _selectedIndex = 1;
   final AuthService _authService = AuthService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final MovieDbApiService _apiService = MovieDbApiService();
 
   bool _isSelectionMode = false;
   final Set<String> _selectedFilms = {};
+  List<MovieItem> _allMovies = [];
+  bool _isLoadingApi = true;
+
+  // Helper pour proxy CORS et cache-busting
+  String _getProxiedUrl(String url) {
+    if (url.isEmpty) return url;
+
+    // Ajouter cache-busting pour forcer le rechargement
+    final cacheBuster = DateTime.now().millisecondsSinceEpoch;
+    final separator = url.contains('?') ? '&' : '?';
+    String urlWithCache = '$url${separator}cb=$cacheBuster';
+
+    // Proxy CORS pour images Amazon
+    if (url.contains('m.media-amazon.com') || url.contains('amazon')) {
+      return 'https://corsproxy.io/?${Uri.encodeComponent(urlWithCache)}';
+    }
+
+    return urlWithCache;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadApiMovies();
+  }
+
+  Future<void> _loadApiMovies() async {
+    try {
+      setState(() {
+        _isLoadingApi = true;
+      });
+
+      final apiMovies = await _apiService.getPopularMovies();
+
+      final List<MovieItem> apiMovieItems = apiMovies.map((apiMovie) {
+        final converted = _apiService.convertToMovieModel(apiMovie);
+        return MovieItem(
+          id: 'api_${converted['id']}',
+          title: converted['title'] ?? 'Sans titre',
+          imageUrl: converted['imageUrl'] ?? '',
+          rating: (converted['rating'] ?? 0.0).toDouble(),
+          source: 'api',
+        );
+      }).toList();
+
+      setState(() {
+        _allMovies = apiMovieItems;
+        _isLoadingApi = false;
+      });
+    } catch (e) {
+      print('Erreur chargement API: $e');
+      setState(() {
+        _isLoadingApi = false;
+      });
+    }
+  }
 
   void _onNavItemTapped(int index) {
     if (index == 0) {
@@ -71,6 +150,31 @@ class _AdminFilmsScreenState extends State<AdminFilmsScreen> {
 
   Future<void> _deleteSelectedFilms() async {
     if (_selectedFilms.isEmpty) return;
+
+    // Vérifier si des films API sont sélectionnés
+    final apiFilms = _selectedFilms
+        .where((id) => id.startsWith('api_'))
+        .toList();
+    if (apiFilms.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.warning, color: Colors.orange),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Impossible de supprimer les films de l\'API. Seuls les films ajoutés peuvent être supprimés.',
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
 
     final confirm = await showDialog<bool>(
       context: context,
@@ -173,6 +277,101 @@ class _AdminFilmsScreenState extends State<AdminFilmsScreen> {
     );
   }
 
+  void _updateSelectedFilm() async {
+    if (_selectedFilms.length != 1) return;
+
+    final filmId = _selectedFilms.first;
+    if (filmId.startsWith('api_')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Impossible de modifier un film de l\'API'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Trouver le film dans la liste combinée
+    MovieItem? movieItem;
+    try {
+      movieItem = _allMovies.firstWhere((m) => m.id == filmId);
+    } catch (e) {
+      print('Film non trouvé dans _allMovies: $filmId');
+    }
+
+    // Si le film n'est pas dans _allMovies, le chercher dans Firestore
+    if (movieItem == null || movieItem.movie == null) {
+      try {
+        final doc = await _firestore.collection('movies').doc(filmId).get();
+        if (!doc.exists) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Film introuvable'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+
+        final movie = Movie.fromFirestore(doc);
+
+        if (mounted) {
+          final result = await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => AdminUpdateMovieScreen(movie: movie),
+            ),
+          );
+
+          if (result == true) {
+            setState(() {
+              _isSelectionMode = false;
+              _selectedFilms.clear();
+            });
+          }
+        }
+        return;
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+          );
+        }
+        return;
+      }
+    }
+
+    // À ce stade, movieItem existe et a un movie
+    if (movieItem.movie == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Données du film invalides'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AdminUpdateMovieScreen(movie: movieItem!.movie!),
+      ),
+    );
+
+    if (result == true) {
+      // Film mis à jour, rafraîchir
+      setState(() {
+        _isSelectionMode = false;
+        _selectedFilms.clear();
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -231,36 +430,38 @@ class _AdminFilmsScreenState extends State<AdminFilmsScreen> {
                   Row(
                     children: [
                       if (_isSelectionMode) ...[
-                        ElevatedButton(
-                          onPressed: _selectedFilms.isNotEmpty
-                              ? _deleteSelectedFilms
-                              : null,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 8,
+                        if (_selectedFilms.isNotEmpty) ...[
+                          ElevatedButton(
+                            onPressed: _deleteSelectedFilms,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
                             ),
+                            child: const Text('Delete'),
                           ),
-                          child: const Text('Delete'),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: () {
-                            // Update functionality - à implémenter
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF6B46C1),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 8,
+                          const SizedBox(width: 8),
+                          if (_selectedFilms.length == 1 &&
+                              !_selectedFilms.first.startsWith('api_'))
+                            ElevatedButton(
+                              onPressed: _updateSelectedFilm,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF6B46C1),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
+                              ),
+                              child: const Text('Update'),
                             ),
-                          ),
-                          child: const Text('Update'),
-                        ),
-                        const SizedBox(width: 8),
+                          if (_selectedFilms.length == 1 &&
+                              !_selectedFilms.first.startsWith('api_'))
+                            const SizedBox(width: 8),
+                        ],
                         TextButton(
                           onPressed: _toggleSelectionMode,
                           child: const Text(
@@ -307,16 +508,27 @@ class _AdminFilmsScreenState extends State<AdminFilmsScreen> {
               child: StreamBuilder<QuerySnapshot>(
                 stream: _firestore.collection('movies').snapshots(),
                 builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return const Center(
-                      child: Text(
-                        'Erreur de chargement',
-                        style: TextStyle(color: Colors.red),
-                      ),
-                    );
+                  // Combine API movies with Firestore movies
+                  List<MovieItem> combinedMovies = List.from(_allMovies);
+
+                  if (snapshot.hasData) {
+                    final firestoreMovies = snapshot.data!.docs.map((doc) {
+                      final movie = Movie.fromFirestore(doc);
+                      return MovieItem(
+                        id: movie.id,
+                        title: movie.title,
+                        imageUrl: movie.imageUrl,
+                        rating: movie.rating,
+                        source: 'firestore',
+                        movie: movie,
+                      );
+                    }).toList();
+
+                    // Add Firestore movies at the beginning
+                    combinedMovies.insertAll(0, firestoreMovies);
                   }
 
-                  if (snapshot.connectionState == ConnectionState.waiting) {
+                  if (_isLoadingApi && combinedMovies.isEmpty) {
                     return const Center(
                       child: CircularProgressIndicator(
                         color: Color(0xFF6B46C1),
@@ -324,9 +536,7 @@ class _AdminFilmsScreenState extends State<AdminFilmsScreen> {
                     );
                   }
 
-                  final movies = snapshot.data!.docs;
-
-                  if (movies.isEmpty) {
+                  if (combinedMovies.isEmpty) {
                     return const Center(
                       child: Text(
                         'Aucun film',
@@ -344,22 +554,18 @@ class _AdminFilmsScreenState extends State<AdminFilmsScreen> {
                           mainAxisSpacing: 16,
                           childAspectRatio: 0.7,
                         ),
-                    itemCount: movies.length,
+                    itemCount: combinedMovies.length,
                     itemBuilder: (context, index) {
-                      final movieData =
-                          movies[index].data() as Map<String, dynamic>;
-                      final movieId = movies[index].id;
-                      final title = movieData['title'] ?? 'Sans titre';
-                      final imageUrl = movieData['imageUrl'] ?? '';
-                      final rating = (movieData['rating'] ?? 0.0).toDouble();
-                      final isSelected = _selectedFilms.contains(movieId);
+                      final movieItem = combinedMovies[index];
+                      final isSelected = _selectedFilms.contains(movieItem.id);
 
                       return _buildMovieCard(
-                        movieId: movieId,
-                        title: title,
-                        imageUrl: imageUrl,
-                        rating: rating,
+                        movieId: movieItem.id,
+                        title: movieItem.title,
+                        imageUrl: movieItem.imageUrl,
+                        rating: movieItem.rating,
                         isSelected: isSelected,
+                        source: movieItem.source,
                       );
                     },
                   );
@@ -383,6 +589,7 @@ class _AdminFilmsScreenState extends State<AdminFilmsScreen> {
     required String imageUrl,
     required double rating,
     required bool isSelected,
+    required String source,
   }) {
     return GestureDetector(
       onTap: _isSelectionMode ? () => _toggleFilmSelection(movieId) : null,
@@ -412,7 +619,7 @@ class _AdminFilmsScreenState extends State<AdminFilmsScreen> {
                         ),
                         child: imageUrl.isNotEmpty
                             ? Image.network(
-                                imageUrl,
+                                _getProxiedUrl(imageUrl),
                                 width: double.infinity,
                                 height: double.infinity,
                                 fit: BoxFit.cover,
@@ -496,6 +703,61 @@ class _AdminFilmsScreenState extends State<AdminFilmsScreen> {
                             ),
                           ),
                         ),
+                      // Source badge (seulement si pas en mode sélection)
+                      if (!_isSelectionMode)
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: source == 'api'
+                                  ? Colors.blue.withOpacity(0.8)
+                                  : const Color(0xFF6B46C1).withOpacity(0.8),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              source == 'api' ? 'API' : 'ADDED',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      // Selection badge (seulement en mode sélection)
+                      if (_isSelectionMode)
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? const Color(0xFF6B46C1)
+                                  : Colors.white,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: isSelected
+                                    ? const Color(0xFF6B46C1)
+                                    : Colors.white,
+                                width: 2,
+                              ),
+                            ),
+                            child: isSelected
+                                ? const Icon(
+                                    Icons.check,
+                                    color: Colors.white,
+                                    size: 16,
+                                  )
+                                : null,
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -515,26 +777,6 @@ class _AdminFilmsScreenState extends State<AdminFilmsScreen> {
               ],
             ),
           ),
-          if (_isSelectionMode)
-            Positioned(
-              top: 8,
-              right: 8,
-              child: Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  color: isSelected ? const Color(0xFF6B46C1) : Colors.white,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: isSelected ? const Color(0xFF6B46C1) : Colors.white,
-                    width: 2,
-                  ),
-                ),
-                child: isSelected
-                    ? const Icon(Icons.remove, color: Colors.white, size: 16)
-                    : null,
-              ),
-            ),
         ],
       ),
     );

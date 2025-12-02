@@ -27,6 +27,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _favoritesCount = 0;
   bool _isLoading = true;
 
+  // Helper pour ajouter cache-busting et forcer le rechargement
+  String _getImageUrl(String url) {
+    if (url.isEmpty) return url;
+
+    // Debug: afficher l'URL
+    print('🖼️ Photo URL: $url');
+
+    // Ajouter un paramètre de cache-busting avec timestamp
+    final cacheBuster = DateTime.now().millisecondsSinceEpoch;
+    final separator = url.contains('?') ? '&' : '?';
+    String urlWithCache = '$url${separator}cb=$cacheBuster';
+
+    print('🔄 URL avec cache-busting: $urlWithCache');
+
+    return urlWithCache;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -191,26 +208,77 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   // Profile Picture and Name
                   Column(
                     children: [
-                      CircleAvatar(
-                        radius: 60,
-                        backgroundColor: const Color(0xFF6B46C1),
-                        backgroundImage: _userProfile?.photoURL != null
-                            ? NetworkImage(_userProfile!.photoURL!)
-                            : null,
-                        child: _userProfile?.photoURL == null
-                            ? Text(
-                                (_userProfile?.displayName ??
-                                        user?.email ??
-                                        'U')
-                                    .substring(0, 1)
-                                    .toUpperCase(),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 36,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              )
-                            : null,
+                      Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          CircleAvatar(
+                            radius: 60,
+                            backgroundColor: const Color(0xFF6B46C1),
+                            child:
+                                _userProfile?.photoURL != null &&
+                                    _userProfile!.photoURL.isNotEmpty
+                                ? ClipOval(
+                                    child: Image.network(
+                                      _getImageUrl(_userProfile!.photoURL),
+                                      width: 120,
+                                      height: 120,
+                                      fit: BoxFit.cover,
+                                      loadingBuilder:
+                                          (context, child, loadingProgress) {
+                                            if (loadingProgress == null)
+                                              return child;
+                                            return Center(
+                                              child: CircularProgressIndicator(
+                                                value:
+                                                    loadingProgress
+                                                            .expectedTotalBytes !=
+                                                        null
+                                                    ? loadingProgress
+                                                              .cumulativeBytesLoaded /
+                                                          loadingProgress
+                                                              .expectedTotalBytes!
+                                                    : null,
+                                                color: Colors.white,
+                                                strokeWidth: 2,
+                                              ),
+                                            );
+                                          },
+                                      errorBuilder: (context, error, stackTrace) {
+                                        print(
+                                          '❌ Erreur chargement image profil: $error',
+                                        );
+                                        print(
+                                          'URL qui a échoué: ${_userProfile!.photoURL}',
+                                        );
+                                        return Text(
+                                          (_userProfile?.displayName ??
+                                                  user?.email ??
+                                                  'U')
+                                              .substring(0, 1)
+                                              .toUpperCase(),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 36,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  )
+                                : Text(
+                                    (_userProfile?.displayName ??
+                                            user?.email ??
+                                            'U')
+                                        .substring(0, 1)
+                                        .toUpperCase(),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 36,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 16),
                       Text(

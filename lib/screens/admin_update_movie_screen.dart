@@ -6,29 +6,32 @@ import '../services/movie_service.dart';
 import '../services/cloudinary_service.dart';
 import '../models/movie_model.dart';
 
-class AdminAddFilmScreen extends StatefulWidget {
-  const AdminAddFilmScreen({super.key});
+class AdminUpdateMovieScreen extends StatefulWidget {
+  final Movie movie;
+
+  const AdminUpdateMovieScreen({super.key, required this.movie});
 
   @override
-  State<AdminAddFilmScreen> createState() => _AdminAddFilmScreenState();
+  State<AdminUpdateMovieScreen> createState() => _AdminUpdateMovieScreenState();
 }
 
-class _AdminAddFilmScreenState extends State<AdminAddFilmScreen> {
-  final TextEditingController _titleController = TextEditingController();
-  final TextEditingController _descriptionController = TextEditingController();
-  final TextEditingController _hourController = TextEditingController();
-  final TextEditingController _minuteController = TextEditingController();
-  final TextEditingController _secondController = TextEditingController();
+class _AdminUpdateMovieScreenState extends State<AdminUpdateMovieScreen> {
+  late TextEditingController _titleController;
+  late TextEditingController _descriptionController;
+  late TextEditingController _hourController;
+  late TextEditingController _minuteController;
+  late TextEditingController _secondController;
 
   final MovieService _movieService = MovieService();
   final CloudinaryService _cloudinaryService = CloudinaryService();
   final ImagePicker _picker = ImagePicker();
 
-  String _selectedGenre = 'romance';
-  String _selectedLanguage = 'English';
+  late String _selectedGenre;
+  late String _selectedLanguage;
   Uint8List? _selectedImageBytes;
   String? _selectedImageName;
   bool _isLoading = false;
+  bool _imageChanged = false;
 
   final List<String> _genres = [
     'romance',
@@ -51,6 +54,37 @@ class _AdminAddFilmScreenState extends State<AdminAddFilmScreen> {
     'Japanese',
     'Korean',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize controllers with movie data
+    _titleController = TextEditingController(text: widget.movie.title);
+    _descriptionController = TextEditingController(
+      text: widget.movie.description,
+    );
+
+    // Convert duration from seconds to hours, minutes, seconds
+    final totalSeconds = widget.movie.duration;
+    final hours = totalSeconds ~/ 3600;
+    final minutes = (totalSeconds % 3600) ~/ 60;
+    final seconds = totalSeconds % 60;
+
+    _hourController = TextEditingController(
+      text: hours > 0 ? hours.toString() : '',
+    );
+    _minuteController = TextEditingController(
+      text: minutes > 0 ? minutes.toString() : '',
+    );
+    _secondController = TextEditingController(
+      text: seconds > 0 ? seconds.toString() : '',
+    );
+
+    _selectedGenre = widget.movie.genre;
+    _selectedLanguage = widget.movie.language.isNotEmpty
+        ? widget.movie.language
+        : 'English';
+  }
 
   @override
   void dispose() {
@@ -103,6 +137,7 @@ class _AdminAddFilmScreenState extends State<AdminAddFilmScreen> {
         setState(() {
           _selectedImageBytes = compressedBytes;
           _selectedImageName = image.name;
+          _imageChanged = true;
         });
 
         if (mounted) {
@@ -114,7 +149,7 @@ class _AdminAddFilmScreenState extends State<AdminAddFilmScreen> {
                   const Icon(Icons.check_circle, color: Colors.green),
                   const SizedBox(width: 8),
                   Text(
-                    'Image prête (${(compressedBytes.length / 1024).toStringAsFixed(0)} KB)',
+                    'Nouvelle image prête (${(compressedBytes.length / 1024).toStringAsFixed(0)} KB)',
                   ),
                 ],
               ),
@@ -126,6 +161,7 @@ class _AdminAddFilmScreenState extends State<AdminAddFilmScreen> {
       }
     } catch (e) {
       if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Erreur de sélection d\'image: $e'),
@@ -152,7 +188,7 @@ class _AdminAddFilmScreenState extends State<AdminAddFilmScreen> {
         interpolation: img.Interpolation.average, // Plus rapide
       );
 
-      // Compress to JPEG with 70% quality (bon équilibre qualité/taille)
+      // Compress to JPEG with 70% quality
       final compressed = img.encodeJpg(resized, quality: 70);
       return Uint8List.fromList(compressed);
     } catch (e) {
@@ -161,7 +197,7 @@ class _AdminAddFilmScreenState extends State<AdminAddFilmScreen> {
     }
   }
 
-  Future<void> _addFilm() async {
+  Future<void> _updateFilm() async {
     // Validation
     if (_titleController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -178,10 +214,10 @@ class _AdminAddFilmScreenState extends State<AdminAddFilmScreen> {
     });
 
     try {
-      String imageUrl = '';
+      String imageUrl = widget.movie.imageUrl;
 
-      // Upload image seulement si une image est sélectionnée
-      if (_selectedImageBytes != null) {
+      // Upload new image if changed
+      if (_imageChanged && _selectedImageBytes != null) {
         // Show upload progress
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -200,81 +236,22 @@ class _AdminAddFilmScreenState extends State<AdminAddFilmScreen> {
               ],
             ),
             backgroundColor: Color(0xFF6B46C1),
-            duration: Duration(minutes: 2),
+            duration: Duration(minutes: 1),
           ),
         );
 
-        // Upload image to Cloudinary (beaucoup plus rapide que Firebase!)
-        try {
-          final uploadedUrl = await _cloudinaryService
-              .uploadMovieImage(
-                imageBytes: _selectedImageBytes!,
-                fileName: _selectedImageName ?? 'movie_image.jpg',
-              )
-              .timeout(
-                const Duration(minutes: 1),
-                onTimeout: () {
-                  print('Timeout upload Cloudinary - continuant sans image');
-                  return null;
-                },
-              );
+        // Upload image to Cloudinary
+        final uploadedUrl = await _cloudinaryService
+            .uploadMovieImage(
+              imageBytes: _selectedImageBytes!,
+              fileName: _selectedImageName ?? 'movie_image.jpg',
+            )
+            .timeout(const Duration(minutes: 1), onTimeout: () => null);
 
-          if (uploadedUrl != null) {
-            imageUrl = uploadedUrl;
-            if (mounted) {
-              ScaffoldMessenger.of(context).clearSnackBars();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Row(
-                    children: [
-                      Icon(Icons.cloud_done, color: Colors.green),
-                      SizedBox(width: 8),
-                      Text('Image uploadée avec succès!'),
-                    ],
-                  ),
-                  backgroundColor: Colors.green,
-                  duration: Duration(seconds: 2),
-                ),
-              );
-            }
-          } else {
-            // Continue without image if upload fails
-            print('Upload échoué, film ajouté sans image');
-            if (mounted) {
-              ScaffoldMessenger.of(context).clearSnackBars();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Row(
-                    children: [
-                      Icon(Icons.warning, color: Colors.orange),
-                      SizedBox(width: 8),
-                      Text('Image non uploadée - Film ajouté sans image'),
-                    ],
-                  ),
-                  backgroundColor: Colors.orange,
-                  duration: Duration(seconds: 3),
-                ),
-              );
-            }
-          }
-        } catch (uploadError) {
-          print('Erreur upload image: $uploadError');
-          if (mounted) {
-            ScaffoldMessenger.of(context).clearSnackBars();
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Row(
-                  children: [
-                    const Icon(Icons.error, color: Colors.white),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text('Erreur upload: $uploadError')),
-                  ],
-                ),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 4),
-              ),
-            );
-          }
+        if (uploadedUrl != null) {
+          imageUrl = uploadedUrl;
+        } else {
+          print('Upload échoué, image non mise à jour');
         }
       }
 
@@ -284,32 +261,19 @@ class _AdminAddFilmScreenState extends State<AdminAddFilmScreen> {
       final second = int.tryParse(_secondController.text) ?? 0;
       final totalSeconds = (hour * 3600) + (minute * 60) + second;
 
-      // Create Movie object
-      final movie = Movie(
-        id: '', // Will be set by Firestore
+      // Create updated Movie object
+      final updatedMovie = widget.movie.copyWith(
         title: _titleController.text.trim(),
         genre: _selectedGenre,
         description: _descriptionController.text.trim(),
-        duration: totalSeconds > 0
-            ? totalSeconds
-            : 7200, // Default 2h if not set
+        duration: totalSeconds > 0 ? totalSeconds : widget.movie.duration,
         language: _selectedLanguage,
         imageUrl: imageUrl,
-        rating: 0.0,
-        viewCount: 0,
-        createdAt: DateTime.now(),
-        cast: [],
-        director: '',
-        releaseYear: DateTime.now().year,
         availableLanguages: [_selectedLanguage],
       );
 
-      // Add movie to Firestore
-      final movieId = await _movieService.addMovie(movie);
-
-      if (movieId == null) {
-        throw Exception('Échec de l\'ajout du film');
-      }
+      // Update movie in Firestore
+      await _movieService.updateMovie(widget.movie.id, updatedMovie);
 
       if (mounted) {
         ScaffoldMessenger.of(context).clearSnackBars();
@@ -319,30 +283,17 @@ class _AdminAddFilmScreenState extends State<AdminAddFilmScreen> {
               children: [
                 Icon(Icons.check_circle, color: Colors.green),
                 SizedBox(width: 8),
-                Text('Film ajouté avec succès!'),
+                Text('Film mis à jour avec succès!'),
               ],
             ),
             backgroundColor: Color(0xFF6B46C1),
           ),
         );
 
-        // Clear form
-        _titleController.clear();
-        _descriptionController.clear();
-        _hourController.clear();
-        _minuteController.clear();
-        _secondController.clear();
-        setState(() {
-          _selectedImageBytes = null;
-          _selectedImageName = null;
-          _selectedGenre = 'romance';
-          _selectedLanguage = 'English';
-        });
-
         // Navigate back after a short delay
         await Future.delayed(const Duration(seconds: 1));
         if (mounted) {
-          Navigator.pop(context);
+          Navigator.pop(context, true); // Return true to indicate success
         }
       }
     } catch (e) {
@@ -382,7 +333,7 @@ class _AdminAddFilmScreenState extends State<AdminAddFilmScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
-          'film management add',
+          'film management update',
           style: TextStyle(color: Colors.grey, fontSize: 14),
         ),
       ),
@@ -462,10 +413,53 @@ class _AdminAddFilmScreenState extends State<AdminAddFilmScreen> {
 
               // Upload image
               const Text(
-                'Upload image',
+                'Update image',
                 style: TextStyle(color: Colors.white70, fontSize: 14),
               ),
               const SizedBox(height: 8),
+
+              // Show current image
+              if (widget.movie.imageUrl.isNotEmpty && !_imageChanged)
+                Container(
+                  height: 200,
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: const Color(0xFF6B46C1),
+                      width: 2,
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.network(
+                      widget.movie.imageUrl,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return const Center(
+                          child: CircularProgressIndicator(
+                            color: Color(0xFF6B46C1),
+                          ),
+                        );
+                      },
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          color: const Color(0xFF1E1E1E),
+                          child: const Center(
+                            child: Icon(
+                              Icons.movie,
+                              color: Color(0xFF6B46C1),
+                              size: 50,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+
               InkWell(
                 onTap: _pickImage,
                 child: Container(
@@ -477,7 +471,7 @@ class _AdminAddFilmScreenState extends State<AdminAddFilmScreen> {
                     color: const Color(0xFF1E1E1E),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: _selectedImageBytes != null
+                      color: _imageChanged
                           ? const Color(0xFF6B46C1)
                           : Colors.transparent,
                       width: 2,
@@ -486,19 +480,19 @@ class _AdminAddFilmScreenState extends State<AdminAddFilmScreen> {
                   child: Row(
                     children: [
                       Icon(
-                        _selectedImageBytes != null
-                            ? Icons.check_circle
-                            : Icons.photo_camera,
-                        color: _selectedImageBytes != null
+                        _imageChanged ? Icons.check_circle : Icons.photo_camera,
+                        color: _imageChanged
                             ? const Color(0xFF6B46C1)
                             : Colors.white,
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          _selectedImageName ?? 'Photo',
+                          _imageChanged
+                              ? (_selectedImageName ?? 'Nouvelle image')
+                              : 'Changer l\'image',
                           style: TextStyle(
-                            color: _selectedImageBytes != null
+                            color: _imageChanged
                                 ? const Color(0xFF6B46C1)
                                 : Colors.white,
                           ),
@@ -594,12 +588,13 @@ class _AdminAddFilmScreenState extends State<AdminAddFilmScreen> {
                 ),
               ),
 
-              const SizedBox(height: 20),
-              // Add Film Button
+              const SizedBox(height: 30),
+
+              // Update Film Button
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _isLoading ? null : _addFilm,
+                  onPressed: _isLoading ? null : _updateFilm,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF6B46C1),
                     foregroundColor: Colors.white,
@@ -618,7 +613,7 @@ class _AdminAddFilmScreenState extends State<AdminAddFilmScreen> {
                           ),
                         )
                       : const Text(
-                          'Add Film',
+                          'Update Film',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,

@@ -19,8 +19,15 @@ class MovieDetailScreen extends StatefulWidget {
 class _MovieDetailScreenState extends State<MovieDetailScreen> {
   final FavoriteService _favoriteService = FavoriteService();
   bool _isFavorite = false;
-  bool _isLoading = true;
   int _selectedIndex = 0;
+
+  // Helper pour proxy CORS (images Amazon)
+  String _getProxiedUrl(String url) {
+    if (url.contains('m.media-amazon.com') || url.contains('amazon')) {
+      return 'https://corsproxy.io/?${Uri.encodeComponent(url)}';
+    }
+    return url;
+  }
 
   @override
   void initState() {
@@ -34,14 +41,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       if (mounted) {
         setState(() {
           _isFavorite = isFav;
-          _isLoading = false;
         });
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() {});
       }
     }
   }
@@ -116,8 +120,24 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                   width: double.infinity,
                   child: widget.movie.imageUrl.isNotEmpty
                       ? Image.network(
-                          widget.movie.imageUrl,
+                          _getProxiedUrl(widget.movie.imageUrl),
                           fit: BoxFit.cover,
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return Container(
+                              color: const Color(0xFF1E1E1E),
+                              child: Center(
+                                child: CircularProgressIndicator(
+                                  value:
+                                      loadingProgress.expectedTotalBytes != null
+                                      ? loadingProgress.cumulativeBytesLoaded /
+                                            loadingProgress.expectedTotalBytes!
+                                      : null,
+                                  color: const Color(0xFF6B46C1),
+                                ),
+                              ),
+                            );
+                          },
                           errorBuilder: (context, error, stackTrace) {
                             return Container(
                               decoration: const BoxDecoration(
@@ -132,7 +152,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                               ),
                               child: const Center(
                                 child: Icon(
-                                  Icons.movie,
+                                  Icons.movie_outlined,
                                   size: 100,
                                   color: Colors.white54,
                                 ),
@@ -544,23 +564,6 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildDetailItem(String label, String value) {
-    return Column(
-      children: [
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11)),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
     );
   }
 

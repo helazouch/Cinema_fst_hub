@@ -17,6 +17,14 @@ class _ApiMovieDetailScreenState extends State<ApiMovieDetailScreen> {
   bool _isFavorite = false;
   bool _isLoading = true;
 
+  // Helper pour proxy CORS (images Amazon)
+  String _getProxiedUrl(String url) {
+    if (url.contains('m.media-amazon.com') || url.contains('amazon')) {
+      return 'https://corsproxy.io/?${Uri.encodeComponent(url)}';
+    }
+    return url;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -126,9 +134,30 @@ class _ApiMovieDetailScreenState extends State<ApiMovieDetailScreen> {
                           child: Stack(
                             children: [
                               Image.network(
-                                widget.movie.imageUrl,
+                                _getProxiedUrl(widget.movie.imageUrl),
                                 fit: BoxFit.cover,
                                 width: double.infinity,
+                                loadingBuilder:
+                                    (context, child, loadingProgress) {
+                                      if (loadingProgress == null) return child;
+                                      return Container(
+                                        color: const Color(0xFF1E1E1E),
+                                        child: Center(
+                                          child: CircularProgressIndicator(
+                                            value:
+                                                loadingProgress
+                                                        .expectedTotalBytes !=
+                                                    null
+                                                ? loadingProgress
+                                                          .cumulativeBytesLoaded /
+                                                      loadingProgress
+                                                          .expectedTotalBytes!
+                                                : null,
+                                            color: const Color(0xFF6B46C1),
+                                          ),
+                                        ),
+                                      );
+                                    },
                                 errorBuilder: (context, error, stackTrace) {
                                   return Container(
                                     decoration: const BoxDecoration(
@@ -139,6 +168,13 @@ class _ApiMovieDetailScreenState extends State<ApiMovieDetailScreen> {
                                           Color(0xFF7B2CBF),
                                           Color(0xFFE0AAFF),
                                         ],
+                                      ),
+                                    ),
+                                    child: const Center(
+                                      child: Icon(
+                                        Icons.movie_outlined,
+                                        color: Colors.white,
+                                        size: 80,
                                       ),
                                     ),
                                   );

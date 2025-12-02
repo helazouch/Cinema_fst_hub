@@ -3,7 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:typed_data';
 import '../services/user_service.dart';
-import '../services/storage_service.dart';
+import '../services/cloudinary_service.dart';
 import '../models/user_model.dart';
 import '../widgets/custom_text_field.dart';
 
@@ -16,7 +16,7 @@ class UpdateProfileScreen extends StatefulWidget {
 
 class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
   final UserService _userService = UserService();
-  final StorageService _storageService = StorageService();
+  final CloudinaryService _cloudinaryService = CloudinaryService();
   final TextEditingController _displayNameController = TextEditingController();
   final TextEditingController _bioController = TextEditingController();
   bool _isLoading = true;
@@ -24,6 +24,16 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
   UserModel? _currentProfile;
   String? _newPhotoPath;
   Uint8List? _webImageBytes;
+
+  // Helper pour ajouter cache-busting et forcer le rechargement
+  String _getImageUrl(String url) {
+    if (url.isEmpty) return url;
+
+    // Ajouter un paramètre de cache-busting avec timestamp
+    final cacheBuster = DateTime.now().millisecondsSinceEpoch;
+    final separator = url.contains('?') ? '&' : '?';
+    return '$url${separator}cb=$cacheBuster';
+  }
 
   @override
   void initState() {
@@ -59,9 +69,9 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
       final picker = ImagePicker();
       final pickedFile = await picker.pickImage(
         source: ImageSource.gallery,
-        maxWidth: 400, // Réduit de 512 à 400
-        maxHeight: 400,
-        imageQuality: 70, // Réduit de 85 à 70 pour upload plus rapide
+        maxWidth: 300, // Réduit pour upload plus rapide
+        maxHeight: 300,
+        imageQuality: 60, // Compression plus agressive
       );
 
       if (pickedFile != null) {
@@ -123,22 +133,50 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
                       ),
                     ),
                     SizedBox(width: 16),
-                    Text('Upload de la photo...'),
+                    Text('Upload vers Cloudinary...'),
                   ],
                 ),
-                duration: Duration(seconds: 10),
+                duration: Duration(minutes: 1),
               ),
             );
           }
 
-          photoURL = await _storageService
-              .uploadProfileImage(_webImageBytes!, user.uid)
-              .timeout(
-                const Duration(seconds: 30),
-                onTimeout: () {
-                  throw Exception('Upload timeout - Connexion trop lente');
-                },
+          try {
+            photoURL = await _cloudinaryService
+                .uploadProfileImage(
+                  imageBytes: _webImageBytes!,
+                  userId: user.uid,
+                )
+                .timeout(
+                  const Duration(
+                    minutes: 1,
+                  ), // 1 minute (Cloudinary est plus rapide)
+                  onTimeout: () {
+                    throw Exception(
+                      'Upload timeout - Vérifiez votre connexion internet',
+                    );
+                  },
+                );
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).clearSnackBars();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Row(
+                    children: [
+                      const Icon(Icons.error, color: Colors.white),
+                      const SizedBox(width: 12),
+                      Expanded(child: Text('Erreur upload: $e')),
+                    ],
+                  ),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 5),
+                ),
               );
+            }
+            setState(() => _isSaving = false);
+            return; // Arrêter si l'upload échoue
+          }
         }
 
         // Update Firestore user profile
@@ -262,30 +300,83 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
                               CircleAvatar(
                                 radius: 60,
                                 backgroundColor: const Color(0xFF6B46C1),
-                                backgroundImage: _webImageBytes != null
-                                    ? MemoryImage(_webImageBytes!)
-                                          as ImageProvider
-                                    : (_currentProfile?.photoURL != null
-                                          ? NetworkImage(
-                                              _currentProfile!.photoURL!,
-                                            )
-                                          : null),
-                                child:
-                                    _webImageBytes == null &&
-                                        _currentProfile?.photoURL == null
-                                    ? Text(
-                                        (_currentProfile?.displayName ??
-                                                user?.email ??
-                                                'U')
-                                            .substring(0, 1)
-                                            .toUpperCase(),
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 36,
-                                          fontWeight: FontWeight.bold,
+                                child: _webImageBytes != null
+                                    ? ClipOval(
+                                        child: Image.memory(
+                                          _webImageBytes!,
+                                          width: 120,
+                                          height: 120,
+                                          fit: BoxFit.cover,
                                         ),
                                       )
-                                    : null,
+                                    : (_currentProfile?.photoURL != null &&
+                                              _currentProfile!
+                                                  .photoURL
+                                                  .isNotEmpty
+                                          ? ClipOval(
+                                              child: Image.network(
+                                                _getImageUrl(
+                                                  _currentProfile!.photoURL,
+                                                ),
+                                                width: 120,
+                                                height: 120,
+                                                fit: BoxFit.cover,
+                                                cacheWidth: 120,
+                                                cacheHeight: 120,
+                                                loadingBuilder: (context, child, loadingProgress) {
+                                                  if (loadingProgress == null)
+                                                    return child;
+                                                  return Center(
+                                                    child: CircularProgressIndicator(
+                                                      value:
+                                                          loadingProgress
+                                                                  .expectedTotalBytes !=
+                                                              null
+                                                          ? loadingProgress
+                                                                    .cumulativeBytesLoaded /
+                                                                loadingProgress
+                                                                    .expectedTotalBytes!
+                                                          : null,
+                                                      color: Colors.white,
+                                                      strokeWidth: 2,
+                                                    ),
+                                                  );
+                                                },
+                                                errorBuilder:
+                                                    (
+                                                      context,
+                                                      error,
+                                                      stackTrace,
+                                                    ) {
+                                                      return Text(
+                                                        (_currentProfile
+                                                                    ?.displayName ??
+                                                                user?.email ??
+                                                                'U')
+                                                            .substring(0, 1)
+                                                            .toUpperCase(),
+                                                        style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 36,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                        ),
+                                                      );
+                                                    },
+                                              ),
+                                            )
+                                          : Text(
+                                              (_currentProfile?.displayName ??
+                                                      user?.email ??
+                                                      'U')
+                                                  .substring(0, 1)
+                                                  .toUpperCase(),
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 36,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            )),
                               ),
                               Positioned(
                                 bottom: 0,

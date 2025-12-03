@@ -5,6 +5,9 @@ import '../widgets/social_login_button.dart';
 import '../services/auth_service.dart';
 import 'sign_in_screen.dart';
 import 'home_screen.dart';
+import 'admin_dashboard_screen.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:typed_data';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -14,11 +17,17 @@ class SignUpScreen extends StatefulWidget {
 }
 
 class _SignUpScreenState extends State<SignUpScreen> {
+  final TextEditingController _firstNameController = TextEditingController();
+  final TextEditingController _lastNameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _monthController = TextEditingController();
+  final TextEditingController _dayController = TextEditingController();
+  final TextEditingController _yearController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
       TextEditingController();
   final AuthService _authService = AuthService();
+  final ImagePicker _imagePicker = ImagePicker();
 
   bool _isPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
@@ -26,10 +35,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   String? _passwordError;
   String? _confirmPasswordError;
+  Uint8List? _selectedImageBytes;
+  String? _selectedImageName;
 
   @override
   void dispose() {
+    _firstNameController.dispose();
+    _lastNameController.dispose();
     _emailController.dispose();
+    _monthController.dispose();
+    _dayController.dispose();
+    _yearController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
@@ -45,6 +61,31 @@ class _SignUpScreenState extends State<SignUpScreen> {
     setState(() {
       _isConfirmPasswordVisible = !_isConfirmPasswordVisible;
     });
+  }
+
+  Future<void> _pickImage() async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 75,
+      );
+
+      if (image != null) {
+        final Uint8List imageBytes = await image.readAsBytes();
+        setState(() {
+          _selectedImageBytes = imageBytes;
+          _selectedImageName = image.name;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur de sélection d\'image: $e')),
+        );
+      }
+    }
   }
 
   void _validatePasswords() {
@@ -69,8 +110,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
       return;
     }
 
-    if (_emailController.text.trim().isEmpty) {
-      _showErrorDialog('Veuillez entrer une adresse email');
+    if (_firstNameController.text.trim().isEmpty ||
+        _lastNameController.text.trim().isEmpty ||
+        _emailController.text.trim().isEmpty) {
+      _showErrorDialog('Please fill in all required fields');
       return;
     }
 
@@ -79,20 +122,47 @@ class _SignUpScreenState extends State<SignUpScreen> {
     });
 
     try {
+      // Construire la date de naissance
+      String dateOfBirth = '';
+      if (_monthController.text.isNotEmpty &&
+          _dayController.text.isNotEmpty &&
+          _yearController.text.isNotEmpty) {
+        dateOfBirth =
+            '${_monthController.text}/${_dayController.text}/${_yearController.text}';
+      }
+
       final user = await _authService.registerWithEmailAndPassword(
         _emailController.text.trim(),
         _passwordController.text,
+        firstName: _firstNameController.text.trim(),
+        lastName: _lastNameController.text.trim(),
+        dateOfBirth: dateOfBirth,
       );
 
       if (user != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Compte créé avec succès!')),
-        );
-        // Retourner à l'écran de connexion
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const SignInScreen()),
-        );
+        // Vérifier le rôle de l'utilisateur
+        final role = await _authService.getUserRole();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Account created successfully!')),
+          );
+
+          // Navigation selon le rôle
+          if (role == 'admin') {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const AdminDashboardScreen(),
+              ),
+            );
+          } else {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const HomeScreen()),
+            );
+          }
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -111,7 +181,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Erreur'),
+        title: const Text('Error'),
         content: Text(message),
         actions: [
           TextButton(
@@ -128,7 +198,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       await _handleGoogleSignUp();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Sign up avec $provider (Non implémenté)')),
+        SnackBar(content: Text('Sign up with $provider (Not implemented)')),
       );
     }
   }
@@ -142,21 +212,36 @@ class _SignUpScreenState extends State<SignUpScreen> {
       final user = await _authService.signUpWithGoogle();
 
       if (user != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Inscription Google réussie!')),
-        );
-        // Navigation vers l'écran principal
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
-        );
+        // Vérifier le rôle de l'utilisateur
+        final role = await _authService.getUserRole();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Google sign up successful!')),
+          );
+
+          // Navigation selon le rôle
+          if (role == 'admin') {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const AdminDashboardScreen(),
+              ),
+            );
+          } else {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const HomeScreen()),
+            );
+          }
+        }
       }
     } catch (e) {
       if (mounted) {
         String errorMessage = e.toString();
         if (errorMessage.contains('Google Sign-In n\'est pas configuré')) {
           errorMessage =
-              'Google Sign-In n\'est pas encore configuré.\n\nPour l\'activer :\n1. Obtenez un Client ID Google\n2. Remplacez YOUR_GOOGLE_CLIENT_ID dans web/index.html';
+              'Google Sign-In is not yet configured.\n\nTo enable it:\n1. Get a Google Client ID\n2. Replace YOUR_GOOGLE_CLIENT_ID in web/index.html';
         }
         _showErrorDialog(errorMessage);
       }
@@ -179,7 +264,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Colors.black,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -193,7 +278,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.bold,
-                  color: Colors.black,
+                  color: Colors.white,
                 ),
               ),
               const Text(
@@ -201,18 +286,87 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.bold,
-                  color: Colors.black,
+                  color: Colors.white,
                 ),
               ),
 
               const SizedBox(height: 40),
 
+              // First Name field
+              CustomTextField(
+                hintText: 'First Name',
+                prefixIcon: Icons.person_outline,
+                controller: _firstNameController,
+                keyboardType: TextInputType.name,
+              ),
+
+              const SizedBox(height: 16),
+
+              // Last Name field
+              CustomTextField(
+                hintText: 'Last Name',
+                prefixIcon: Icons.person_outline,
+                controller: _lastNameController,
+                keyboardType: TextInputType.name,
+              ),
+
+              const SizedBox(height: 16),
+
               // Email field
               CustomTextField(
-                hintText: 'Username or Email',
-                prefixIcon: Icons.person_outline,
+                hintText: 'Email',
+                prefixIcon: Icons.email_outlined,
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
+              ),
+
+              const SizedBox(height: 16),
+
+              // Date of birth label
+              const Text(
+                'Date of birth',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              // Date of birth fields (MM/DD/YYYY)
+              Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: CustomTextField(
+                      hintText: 'MM',
+                      prefixIcon: Icons.calendar_today,
+                      controller: _monthController,
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: CustomTextField(
+                      hintText: 'DD',
+                      prefixIcon: Icons.calendar_today,
+                      controller: _dayController,
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 3,
+                    child: CustomTextField(
+                      hintText: 'YYYY',
+                      prefixIcon: Icons.calendar_today,
+                      controller: _yearController,
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                ],
               ),
 
               const SizedBox(height: 16),
@@ -281,6 +435,73 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 ],
               ),
 
+              const SizedBox(height: 16),
+
+              // Upload Image section
+              const Text(
+                'Upload image',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              // Upload Image button
+              InkWell(
+                onTap: _pickImage,
+                child: Container(
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E1E1E),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _selectedImageBytes != null
+                          ? const Color(0xFF6B46C1)
+                          : Colors.grey[800]!,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        _selectedImageBytes != null
+                            ? Icons.check_circle
+                            : Icons.photo_camera,
+                        color: _selectedImageBytes != null
+                            ? const Color(0xFF6B46C1)
+                            : Colors.grey[400],
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _selectedImageBytes != null
+                            ? _selectedImageName ?? 'Image sélectionnée'
+                            : 'Photo',
+                        style: TextStyle(
+                          color: _selectedImageBytes != null
+                              ? const Color(0xFF6B46C1)
+                              : Colors.grey[400],
+                          fontSize: 16,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              // Privacy notice
+              Text(
+                'By clicking the Register button, you agree\nto the public offer',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              ),
+
               const SizedBox(height: 24),
 
               // Create Account button
@@ -295,15 +516,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
               // OR divider
               Row(
                 children: [
-                  Expanded(child: Divider(color: Colors.grey[300])),
+                  Expanded(child: Divider(color: Colors.grey[700])),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
                       '- OR Continue with -',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                      style: TextStyle(color: Colors.grey[400], fontSize: 14),
                     ),
                   ),
-                  Expanded(child: Divider(color: Colors.grey[300])),
+                  Expanded(child: Divider(color: Colors.grey[700])),
                 ],
               ),
 
@@ -336,7 +557,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 children: [
                   Text(
                     'I Already Have an Account ',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                    style: TextStyle(color: Colors.grey[400], fontSize: 14),
                   ),
                   TextButton(
                     onPressed: _handleLogin,

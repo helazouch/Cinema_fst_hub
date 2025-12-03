@@ -39,9 +39,22 @@ dependencies:
   firebase_core: ^3.6.0
   firebase_auth: ^5.3.1
   cloud_firestore: ^5.4.3
+  firebase_storage: ^12.3.2
 
   # Google Sign In
   google_sign_in: ^6.2.1
+
+  # Image picker
+  image_picker: ^1.1.2
+
+  # Image compression and manipulation
+  image: ^4.1.7
+
+  # Cloudinary for image hosting and optimization
+  cloudinary_public: ^0.21.0
+
+  # HTTP requests for API calls
+  http: ^1.2.0
 
 dev_dependencies:
   flutter_test:

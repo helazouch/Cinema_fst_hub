@@ -29,16 +29,21 @@ class CustomTextField extends StatelessWidget {
         obscureText: obscureText,
         keyboardType: keyboardType,
         onChanged: onChanged,
+        style: const TextStyle(color: Colors.white),
         decoration: InputDecoration(
           hintText: hintText,
-          hintStyle: TextStyle(color: Colors.grey[600], fontSize: 16),
-          prefixIcon: Icon(prefixIcon, color: Colors.grey[600]),
+          hintStyle: TextStyle(color: Colors.grey[500], fontSize: 16),
+          prefixIcon: Icon(prefixIcon, color: Colors.grey[400]),
           suffixIcon: suffixIcon,
           filled: true,
-          fillColor: Colors.grey[100],
+          fillColor: const Color(0xFF1E1E1E),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12.0),
-            borderSide: BorderSide.none,
+            borderSide: BorderSide(color: Colors.grey[800]!),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12.0),
+            borderSide: BorderSide(color: Colors.grey[800]!),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12.0),

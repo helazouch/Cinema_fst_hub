@@ -5,6 +5,7 @@ import '../widgets/social_login_button.dart';
 import '../services/auth_service.dart';
 import 'sign_up_screen.dart';
 import 'home_screen.dart';
+import 'admin_dashboard_screen.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -36,7 +37,7 @@ class _SignInScreenState extends State<SignInScreen> {
   void _handleLogin() async {
     if (_emailController.text.trim().isEmpty ||
         _passwordController.text.isEmpty) {
-      _showErrorDialog('Veuillez remplir tous les champs');
+      _showErrorDialog('Please fill in all fields');
       return;
     }
 
@@ -51,18 +52,72 @@ class _SignInScreenState extends State<SignInScreen> {
       );
 
       if (user != null && mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Connexion réussie!')));
-        // Navigation vers l'écran principal
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
-        );
+        // Vérifier le rôle de l'utilisateur
+        final role = await _authService.getUserRole();
+
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Login successful!')));
+
+          // Navigation selon le rôle
+          if (role == 'admin') {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const AdminDashboardScreen(),
+              ),
+            );
+          } else {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const HomeScreen()),
+            );
+          }
+        }
+      }
+    } on Exception catch (e) {
+      if (mounted) {
+        String errorMessage = 'Connection error';
+        String exceptionString = e.toString();
+
+        if (exceptionString.contains('wrong-password')) {
+          errorMessage = 'Incorrect password';
+        } else if (exceptionString.contains('user-not-found')) {
+          errorMessage = 'No account found with this email';
+        } else if (exceptionString.contains('invalid-email')) {
+          errorMessage = 'Invalid email';
+        } else if (exceptionString.contains('désactivé') ||
+            exceptionString.contains('desactivated') ||
+            exceptionString.contains('administrateur')) {
+          errorMessage =
+              'Your account has been deactivated. Please contact the administrator.';
+        } else {
+          // Extract message after "Exception: "
+          if (exceptionString.contains('Exception: ')) {
+            errorMessage = exceptionString.split('Exception: ').last;
+          } else {
+            errorMessage = exceptionString;
+          }
+        }
+        _showErrorDialog(errorMessage);
       }
     } catch (e) {
       if (mounted) {
-        _showErrorDialog(e.toString());
+        String errorMessage = 'Connection error';
+        String errorString = e.toString();
+
+        // Extract clean error message
+        if (errorString.contains('Exception: ')) {
+          errorMessage = errorString.split('Exception: ').last;
+        } else if (errorString.contains('désactivé') ||
+            errorString.contains('administrateur')) {
+          errorMessage =
+              'Your account has been deactivated. Please contact the administrator.';
+        } else {
+          errorMessage = errorString;
+        }
+        _showErrorDialog(errorMessage);
       }
     } finally {
       if (mounted) {
@@ -77,12 +132,13 @@ class _SignInScreenState extends State<SignInScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Erreur'),
-        content: Text(message),
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('Error', style: TextStyle(color: Colors.white)),
+        content: Text(message, style: const TextStyle(color: Colors.white70)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
+            child: const Text('OK', style: TextStyle(color: Color(0xFF6B46C1))),
           ),
         ],
       ),
@@ -94,7 +150,7 @@ class _SignInScreenState extends State<SignInScreen> {
       await _handleGoogleSignIn();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Connexion avec $provider (Non implémenté)')),
+        SnackBar(content: Text('Login with $provider (Not implemented)')),
       );
     }
   }
@@ -108,21 +164,46 @@ class _SignInScreenState extends State<SignInScreen> {
       final user = await _authService.signInWithGoogle();
 
       if (user != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Connexion Google réussie!')),
-        );
-        // Navigation vers l'écran principal
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
-        );
+        // Vérifier le rôle de l'utilisateur
+        final role = await _authService.getUserRole();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Google login successful!')),
+          );
+
+          // Navigation selon le rôle
+          if (role == 'admin') {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const AdminDashboardScreen(),
+              ),
+            );
+          } else {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const HomeScreen()),
+            );
+          }
+        }
       }
     } catch (e) {
       if (mounted) {
-        String errorMessage = e.toString();
-        if (errorMessage.contains('Google Sign-In n\'est pas configuré')) {
+        String errorMessage = 'Connection error';
+        String errorString = e.toString();
+
+        if (errorString.contains('Google Sign-In n\'est pas configuré')) {
           errorMessage =
-              'Google Sign-In n\'est pas encore configuré.\n\nPour l\'activer :\n1. Obtenez un Client ID Google\n2. Remplacez YOUR_GOOGLE_CLIENT_ID dans web/index.html';
+              'Google Sign-In is not yet configured.\n\nTo enable it:\n1. Get a Google Client ID\n2. Replace YOUR_GOOGLE_CLIENT_ID in web/index.html';
+        } else if (errorString.contains('Exception: ')) {
+          errorMessage = errorString.split('Exception: ').last;
+        } else if (errorString.contains('désactivé') ||
+            errorString.contains('administrateur')) {
+          errorMessage =
+              'Votre compte a été désactivé. Veuillez contacter l\'administrateur.';
+        } else {
+          errorMessage = errorString;
         }
         _showErrorDialog(errorMessage);
       }
@@ -136,9 +217,9 @@ class _SignInScreenState extends State<SignInScreen> {
   }
 
   void _handleForgotPassword() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Réinitialisation du mot de passe')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Password reset')));
   }
 
   void _handleSignUp() {
@@ -151,7 +232,7 @@ class _SignInScreenState extends State<SignInScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Colors.black,
       // appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -166,7 +247,7 @@ class _SignInScreenState extends State<SignInScreen> {
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.bold,
-                  color: Colors.black,
+                  color: Colors.white,
                 ),
               ),
               const Text(
@@ -174,7 +255,7 @@ class _SignInScreenState extends State<SignInScreen> {
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.bold,
-                  color: Colors.black,
+                  color: Colors.white,
                 ),
               ),
 
@@ -182,8 +263,8 @@ class _SignInScreenState extends State<SignInScreen> {
 
               // Email field
               CustomTextField(
-                hintText: 'Username or Email',
-                prefixIcon: Icons.person_outline,
+                hintText: 'Email',
+                prefixIcon: Icons.email_outlined,
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
               ),
@@ -235,15 +316,15 @@ class _SignInScreenState extends State<SignInScreen> {
               // OR divider
               Row(
                 children: [
-                  Expanded(child: Divider(color: Colors.grey[300])),
+                  Expanded(child: Divider(color: Colors.grey[700])),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
                       '- OR Continue with -',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                      style: TextStyle(color: Colors.grey[400], fontSize: 14),
                     ),
                   ),
-                  Expanded(child: Divider(color: Colors.grey[300])),
+                  Expanded(child: Divider(color: Colors.grey[700])),
                 ],
               ),
 
@@ -276,7 +357,7 @@ class _SignInScreenState extends State<SignInScreen> {
                 children: [
                   Text(
                     'Create An Account ',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                    style: TextStyle(color: Colors.grey[400], fontSize: 14),
                   ),
                   TextButton(
                     onPressed: _handleSignUp,

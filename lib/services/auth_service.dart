@@ -19,19 +19,29 @@ class AuthService {
   // Stream pour écouter les changements d'authentification
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
-  // Inscription avec email et mot de passe
+  // Inscription avec email et mot de passe + données utilisateur
   Future<UserCredential?> registerWithEmailAndPassword(
     String email,
-    String password,
-  ) async {
+    String password, {
+    String? firstName,
+    String? lastName,
+    String? dateOfBirth,
+    String? photoURL,
+  }) async {
     try {
       UserCredential result = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      // Créer un document utilisateur dans Firestore
-      await _createUserDocument(result.user);
+      // Créer un document utilisateur dans Firestore avec toutes les données
+      await _createUserDocument(
+        result.user,
+        firstName: firstName,
+        lastName: lastName,
+        dateOfBirth: dateOfBirth,
+        photoURL: photoURL,
+      );
 
       return result;
     } catch (e) {
@@ -40,7 +50,58 @@ class AuthService {
     }
   }
 
-  // Connexion avec email et mot de passe
+  // Connexion avec first name et mot de passe
+  Future<UserCredential?> signInWithFirstNameAndPassword(
+    String firstName,
+    String password,
+  ) async {
+    try {
+      // Rechercher l'utilisateur par firstName dans Firestore
+      QuerySnapshot userQuery = await _firestore
+          .collection('users')
+          .where('firstName', isEqualTo: firstName)
+          .limit(1)
+          .get();
+
+      if (userQuery.docs.isEmpty) {
+        throw Exception('Aucun utilisateur trouvé avec ce prénom');
+      }
+
+      // Vérifier si le compte est actif (sauf pour les admins)
+      final userData = userQuery.docs.first.data() as Map<String, dynamic>;
+      final role = userData['role'] ?? 'user';
+
+      if (role != 'admin') {
+        final isActive = userData['isActive'] ?? true;
+        if (!isActive) {
+          throw Exception(
+            'Votre compte a été désactivé. Veuillez contacter l\'administrateur.',
+          );
+        }
+      }
+
+      // Récupérer l'email de l'utilisateur
+      String email = userQuery.docs.first.get('email');
+
+      // Se connecter avec email et password
+      UserCredential result = await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      // Mettre à jour la dernière connexion
+      await _firestore.collection('users').doc(result.user!.uid).update({
+        'lastSignIn': FieldValue.serverTimestamp(),
+      });
+
+      return result;
+    } catch (e) {
+      print('Erreur de connexion: $e');
+      rethrow;
+    }
+  }
+
+  // Connexion avec email et mot de passe (garde pour compatibilité)
   Future<UserCredential?> signInWithEmailAndPassword(
     String email,
     String password,
@@ -50,6 +111,33 @@ class AuthService {
         email: email,
         password: password,
       );
+
+      // Vérifier si le compte est actif (sauf pour les admins)
+      final userDoc = await _firestore
+          .collection('users')
+          .doc(result.user!.uid)
+          .get();
+      if (userDoc.exists) {
+        final userData = userDoc.data() as Map<String, dynamic>;
+        final role = userData['role'] ?? 'user';
+
+        if (role != 'admin') {
+          final isActive = userData['isActive'] ?? true;
+          if (!isActive) {
+            // Disconnect immediately
+            await _auth.signOut();
+            throw Exception(
+              'Your account has been deactivated. Please contact the administrator.',
+            );
+          }
+        }
+
+        // Mettre à jour la dernière connexion
+        await _firestore.collection('users').doc(result.user!.uid).update({
+          'lastSignIn': FieldValue.serverTimestamp(),
+        });
+      }
+
       return result;
     } catch (e) {
       print('Erreur de connexion: $e');
@@ -60,7 +148,19 @@ class AuthService {
   // Déconnexion
   Future<void> signOut() async {
     try {
-      await Future.wait([_auth.signOut(), _googleSignIn.signOut()]);
+      // Déconnexion Firebase Auth
+      await _auth.signOut();
+
+      // Déconnexion Google seulement si l'utilisateur était connecté via Google
+      try {
+        final googleUser = _googleSignIn.currentUser;
+        if (googleUser != null) {
+          await _googleSignIn.signOut();
+        }
+      } catch (e) {
+        // Ignorer les erreurs de déconnexion Google si non configuré
+        print('Google sign out skipped: $e');
+      }
     } catch (e) {
       print('Erreur de déconnexion: $e');
       rethrow;
@@ -108,6 +208,28 @@ class AuthService {
         credential,
       );
 
+      // Vérifier si le compte est actif (sauf pour les admins)
+      final userDoc = await _firestore
+          .collection('users')
+          .doc(result.user!.uid)
+          .get();
+      if (userDoc.exists) {
+        final userData = userDoc.data() as Map<String, dynamic>;
+        final role = userData['role'] ?? 'user';
+
+        if (role != 'admin') {
+          final isActive = userData['isActive'] ?? true;
+          if (!isActive) {
+            // Disconnect immediately
+            await _auth.signOut();
+            await _googleSignIn.signOut();
+            throw Exception(
+              'Your account has been deactivated. Please contact the administrator.',
+            );
+          }
+        }
+      }
+
       // Créer ou mettre à jour le document utilisateur
       await _createUserDocument(result.user);
 
@@ -123,7 +245,7 @@ class AuthService {
     try {
       if (!isGoogleSignInAvailable) {
         throw Exception(
-          'Google Sign-In n\'est pas configuré. Veuillez configurer GOOGLE_CLIENT_ID.',
+          'Google Sign-In is not configured. Please configure GOOGLE_CLIENT_ID.',
         );
       }
 
@@ -145,8 +267,33 @@ class AuthService {
     }
   }
 
+  // Obtenir le rôle de l'utilisateur connecté
+  Future<String> getUserRole() async {
+    try {
+      final user = currentUser;
+      if (user == null) {
+        return 'user'; // Par défaut
+      }
+
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+      if (userDoc.exists) {
+        return userDoc.get('role') ?? 'user';
+      }
+      return 'user';
+    } catch (e) {
+      print('Erreur lors de la récupération du rôle: $e');
+      return 'user';
+    }
+  }
+
   // Créer un document utilisateur dans Firestore
-  Future<void> _createUserDocument(User? user) async {
+  Future<void> _createUserDocument(
+    User? user, {
+    String? firstName,
+    String? lastName,
+    String? dateOfBirth,
+    String? photoURL,
+  }) async {
     if (user != null) {
       DocumentReference userDoc = _firestore.collection('users').doc(user.uid);
 
@@ -157,11 +304,17 @@ class AuthService {
         await userDoc.set({
           'uid': user.uid,
           'email': user.email,
-          'displayName': user.displayName ?? 'Utilisateur',
-          'photoURL': user.photoURL,
+          'firstName': firstName ?? user.displayName?.split(' ').first ?? '',
+          'lastName': lastName ?? user.displayName?.split(' ').last ?? '',
+          'displayName': user.displayName ?? '$firstName $lastName',
+          'dateOfBirth': dateOfBirth ?? '',
+          'photoURL': photoURL ?? user.photoURL,
           'createdAt': FieldValue.serverTimestamp(),
           'lastSignIn': FieldValue.serverTimestamp(),
           'authProvider': _getAuthProvider(user),
+          'role':
+              'user', // Par défaut, tous les nouveaux utilisateurs sont 'user'
+          'isActive': true, // Par défaut, les utilisateurs sont actifs
         });
       } else {
         // Mettre à jour la dernière connexion
@@ -171,7 +324,7 @@ class AuthService {
               user.displayName ??
               docSnapshot.get('displayName') ??
               'Utilisateur',
-          'photoURL': user.photoURL ?? docSnapshot.get('photoURL'),
+          'photoURL': photoURL ?? user.photoURL ?? docSnapshot.get('photoURL'),
         });
       }
     }
@@ -230,21 +383,21 @@ class AuthService {
         case 'weak-password':
           return 'Le mot de passe est trop faible.';
         case 'email-already-in-use':
-          return 'Un compte existe déjà avec cette adresse email.';
+          return 'An account already exists with this email address.';
         case 'invalid-email':
-          return 'L\'adresse email n\'est pas valide.';
+          return 'The email address is not valid.';
         case 'user-not-found':
-          return 'Aucun utilisateur trouvé avec cette adresse email.';
+          return 'No user found with this email address.';
         case 'wrong-password':
-          return 'Mot de passe incorrect.';
+          return 'Incorrect password.';
         case 'user-disabled':
-          return 'Ce compte a été désactivé.';
+          return 'This account has been deactivated.';
         case 'too-many-requests':
-          return 'Trop de tentatives. Veuillez réessayer plus tard.';
+          return 'Too many attempts. Please try again later.';
         case 'network-request-failed':
-          return 'Erreur de connexion. Vérifiez votre connexion internet.';
+          return 'Connection error. Check your internet connection.';
         default:
-          return 'Une erreur s\'est produite: ${error.message}';
+          return 'An error occurred: ${error.message}';
       }
     }
     return 'Une erreur inattendue s\'est produite.';
